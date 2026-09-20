@@ -1,7 +1,10 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 # methods
-## method that calculate the result
+
+## method that simulates one Bernoulli reward
+
 def pull_arm(prob, rng):
 
     random_value = rng.random()
@@ -13,31 +16,23 @@ def pull_arm(prob, rng):
     return reward
 
 
-## calculate the average probability for each arm after iterating
+## method that calculates the estimated probabilities
+
 def get_probs(reward, times, esti_probs):
 
     for i in range(len(times)):
         if times[i] == 0:
             esti_probs[i] = np.nan
-            print("arm ", i , "was never selected; its average reward is undefined.")
+            print("arm", i + 1, "was never selected; its average reward is undefined.")
+
         else:
             esti_probs[i] = reward[i] / times[i]
 
     return esti_probs
 
 
-## make multi times decition
-def run_arms(reward, times, num_dec, true_probs, rng):
+## method that randomly chooses one arm
 
-    for i in range(num_dec):
-        action = choose_arm(len(true_probs), rng)
-        reward[action] = reward[action] + pull_arm(true_probs[action], rng)
-        times[action] = times[action] + 1
-
-    return reward, times
-
-
-## method that randomly choose one arm
 def choose_arm(num_arms, rng):
 
     action = rng.integers(num_arms)
@@ -45,71 +40,142 @@ def choose_arm(num_arms, rng):
     return action
 
 
+## method that runs the random
+
+def run_random(num_dec, true_probs, rng):
+
+    reward = np.zeros(len(true_probs), dtype=int)
+    times = np.zeros(len(true_probs), dtype=int)
+    esti_probs = np.zeros(len(true_probs))
+    reward_history = np.zeros(num_dec, dtype=int)
+    action_history = np.zeros(num_dec, dtype=int)
+
+    for i in range(num_dec):
+
+        action = choose_arm(len(true_probs), rng)
+        current_reward = pull_arm(true_probs[action], rng)
+        reward[action] = reward[action] + current_reward
+        times[action] = times[action] + 1
+        reward_history[i] = current_reward
+        action_history[i] = action
+
+    esti_probs = get_probs(reward, times, esti_probs)
+
+    return reward, times, esti_probs, reward_history, action_history
 
 
+## method that chooses one arm using epsilon-greedy
 
-## method that choose the arm
 def choose_arm_EG(epsilon, esti_probs_EG, rng):
+
     num = np.argmax(esti_probs_EG)
-    random = rng.random()
-    if random > epsilon:
+    random_value = rng.random()
+
+    if random_value > epsilon:
         action = num
+
     else:
         action = rng.integers(len(esti_probs_EG))
+
     return action
 
 
-## method that use EG
-def EG(epsilon, reward_EG, times_EG, num_dec, esti_probs_EG, true_probs, rng):
-    for i in range(len(times_EG)):
-        if times_EG[i] == 0:
-            action = i
-            reward_EG[action] = reward_EG[action] + pull_arm(true_probs[action], rng)
-            times_EG[action] = times_EG[action] + 1
-            esti_probs_EG[action] = reward_EG[action] / times_EG[action]
+## method that runs the epsilon-greedy
+def EG(epsilon, num_dec, true_probs, rng):
 
-    for i in range(num_dec - len(true_probs)):
-        action = choose_arm_EG(epsilon, esti_probs_EG, rng)
-        reward_EG[action] = reward_EG[action] + pull_arm(true_probs[action], rng)
+    reward_EG = np.zeros(len(true_probs), dtype=int)
+    times_EG = np.zeros(len(true_probs), dtype=int)
+    esti_probs_EG = np.zeros(len(true_probs))
+    reward_history_EG = np.zeros(num_dec, dtype=int)
+    action_history_EG = np.zeros(num_dec, dtype=int)
+
+    ## select each arm once for initialization
+
+    for i in range(len(true_probs)):
+        action = i
+        current_reward = pull_arm(true_probs[action], rng)
+        reward_EG[action] = reward_EG[action] + current_reward
         times_EG[action] = times_EG[action] + 1
         esti_probs_EG[action] = reward_EG[action] / times_EG[action]
+        reward_history_EG[i] = current_reward
+        action_history_EG[i] = action
 
-    return reward_EG, times_EG, esti_probs_EG
+    ## run epsilon-greedy for the remaining decisions
 
+    for i in range(len(true_probs), num_dec):
+        action = choose_arm_EG(epsilon, esti_probs_EG, rng)
+        current_reward = pull_arm(true_probs[action], rng)
+        reward_EG[action] = reward_EG[action] + current_reward
+        times_EG[action] = times_EG[action] + 1
+        esti_probs_EG[action] = reward_EG[action] / times_EG[action]
+        reward_history_EG[i] = current_reward
+        action_history_EG[i] = action
+
+    return reward_EG, times_EG, esti_probs_EG, reward_history_EG, action_history_EG
 
 
 # setup
+
 rng = np.random.default_rng(17)
 true_probs = np.array([0.3, 0.5, 0.7])
-reward = np.zeros(len(true_probs))
-times = np.zeros(len(true_probs))
-esti_probs = np.zeros(len(true_probs))
-
 num_dec = 10000
 
 
-reward, times = run_arms(reward, times, num_dec, true_probs, rng)
-esti_probs = get_probs(reward, times, esti_probs)
+## random setup
+
+reward, times, esti_probs, reward_history, action_history = run_random(num_dec, true_probs, rng)
 
 
-print("chosen arm: ", times)
-print("true probability: ", true_probs)
-print("reward: ", reward)
-print("estimate probability: ", esti_probs)
+print("arm pull counts: ", times)
+print("true probabilities: ", true_probs)
+print("total rewards: ", reward)
+print("estimated probabilities: ", esti_probs)
 
-## epsilon-greedy set up
-reward_EG = np.zeros(len(true_probs))
-times_EG = np.zeros(len(true_probs))
-esti_probs_EG = np.zeros(len(true_probs))
 
+## epsilon-greedy setup
 
 epsilon = 0.1
 
+reward_EG, times_EG, esti_probs_EG, reward_history_EG, action_history_EG = EG(epsilon, num_dec, true_probs, rng)
 
-reward_EG, times_EG, esti_probs_EG = EG(epsilon, reward_EG, times_EG, num_dec, esti_probs_EG, true_probs, rng)
+## calculate cumulative average rewards
+
+cumu_avg_rand = np.cumsum(reward_history) / np.arange(1, num_dec + 1)
+cumu_avg_EG = np.cumsum(reward_history_EG) / np.arange(1, num_dec + 1)
 
 
-print("chosen arm EG: ", times_EG)
-print("true probability EG: ", true_probs)
-print("reward EG: ", reward_EG)
-print("estimate probability EG: ", esti_probs_EG)
+## calculate optimal arm selection rates
+
+opti_arm = np.argmax(true_probs)
+opti_rate_rand = np.mean(action_history == opti_arm)
+opti_rate_EG = np.mean(action_history_EG == opti_arm)
+
+
+print("arm pull counts EG: ", times_EG)
+print("true probabilities EG: ", true_probs)
+print("total rewards EG: ", reward_EG)
+print("estimated probabilities EG: ", esti_probs_EG)
+print("overall average reward random: ", cumu_avg_rand[-1])
+print("overall average reward EG: ", cumu_avg_EG[-1])
+print("optimal arm selection rate random: ", opti_rate_rand)
+print("optimal arm selection rate EG: ", opti_rate_EG)
+
+
+## plot cumulative average rewards
+
+dec_steps = np.arange(1, num_dec + 1)
+
+plt.figure(figsize=(10, 6))
+plt.plot(dec_steps, cumu_avg_rand, label="Random")
+plt.plot(dec_steps, cumu_avg_EG, label="Epsilon-Greedy")
+plt.axhline(y=np.max(true_probs), color="black", linestyle="--", label="Optimal Expected Reward")
+
+plt.xlabel("Decision")
+plt.ylabel("Cumulative Average Reward")
+plt.title("Random vs. Epsilon-Greedy")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+
+plt.savefig("reward_comparison.png", dpi=300)
+plt.show()
