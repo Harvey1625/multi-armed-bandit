@@ -74,9 +74,13 @@ These comparisons are based on the same bandit environment and fixed algorithm p
 
 ![Cumulative Regret Comparison](regret_comparison.png)
 
-## 4. Sensitivity Analysis
+## 4. Comparison Under Different Environments
 
-I also tested four different bandit environments to see how the differences between arm probabilities affect algorithm performance.
+I also tested the four algorithms under different Bernoulli reward probabilities to see how their performance changes when the arms become more similar.
+
+I used four environments with different reward probabilities and compared the mean reward, cumulative pseudo-regret, and optimal arm selection rate.
+
+Each experiment uses 100 Monte Carlo runs with 3,000 decisions per run.
 
 | Environment | True Probabilities | Gap Between Best Two Arms |
 |---|---|---:|
@@ -117,55 +121,3 @@ As the reward probabilities become closer, all three learning algorithms select 
 
 The sensitivity results are preliminary, and more simulations would be useful for comparing small performance differences.
 
-## 5. Code Structure
-
-The main simulation is implemented in `bandit.py`.
-
-Main functions:
-
-- `pull_arm()`: Generates a Bernoulli reward.
-- `policy_random()`: Random arm selection.
-- `policy_EG()`: Epsilon-Greedy selection.
-- `policy_UCB()`: Upper Confidence Bound selection.
-- `policy_TS()`: Thompson Sampling selection.
-- `run_bandit()`: Runs one bandit simulation using a selected policy.
-- `run_monte_carlo()`: Runs multiple simulations and stores the reward and action histories.
-
-The same simulation framework is used for all four policies.
-
-## 6. How to Run
-
-The project uses Python, NumPy, and Matplotlib.
-
-Install the dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Run the simulation:
-
-```bash
-python bandit.py
-```
-
-The script generates:
-
-- `all_policies_comparison.png` — cumulative average reward comparison
-- `regret_comparison.png` — cumulative pseudo-regret comparison
-- `sensitivity_results.csv` — sensitivity analysis results
-- `bandit_mc_results.npz` — Monte Carlo reward and action histories, saved locally
-
-The main simulation uses 1,000 runs with 10,000 decisions each. The sensitivity analysis currently uses 100 runs with 3,000 decisions each.
-
-## 7. Next Steps
-
-Some possible next steps are:
-
-- Compare the algorithms over different time horizons.
-- Test different epsilon values for Epsilon-Greedy.
-- Test different exploration coefficients for UCB.
-- Increase the number of Monte Carlo runs in the sensitivity analysis.
-- Study how quickly each algorithm identifies the optimal arm.
-
-These experiments could help explain the differences between the policies under different exploration settings and bandit environments.
