@@ -1,38 +1,171 @@
-# Multi-Armed-Bandit
+# Multi-Armed Bandit Simulation
 
-Simulation and evaluation of multi-armed bandit algorithms in Python.
+This project implements several algorithms for the stochastic multi-armed bandit problem and compares their performance in Bernoulli reward environments.
 
-The project compares two methods:
+The main goal is to compare different exploration and exploitation strategies using average rewards and cumulative regret. I also tested how the algorithms perform when the reward probabilities of the arms become closer.
 
-* Random selection
-* Epsilon-greedy
+## 1. Algorithms
 
-## Setup
+Four policies are included:
 
-There are three arms with true reward probabilities:
+- **Random:** Selects an arm uniformly at random. Used as a baseline.
+- **Epsilon-Greedy (EG):** Usually selects the arm with the highest estimated reward probability, but explores randomly with probability epsilon.
+- **Upper Confidence Bound (UCB):** Selects an arm based on its estimated reward and an exploration bonus.
+- **Thompson Sampling (TS):** Samples from the Beta posterior distribution of each arm and selects the arm with the highest sampled probability.
 
-```python
-true_probs = [0.3, 0.5, 0.7]
+For Epsilon-Greedy, I used a fixed epsilon of 0.05.
+
+For UCB, the exploration bonus is:
+
+`sqrt(2 * log(t) / N_i)`
+
+For Thompson Sampling, each arm starts with a Beta(1,1) prior. After observing a reward, the posterior parameters are updated based on the number of successes and failures.
+
+## 2. Simulation Setup
+
+The main experiment uses three Bernoulli arms with true reward probabilities:
+
+`true_probs = [0.3, 0.5, 0.7]`
+
+Each policy is evaluated using:
+
+- 10,000 decisions per simulation
+- 1,000 Monte Carlo runs
+- Fixed random seeds for reproducibility
+- Separate random number generators for policy decisions and reward generation
+
+The main performance measures are:
+
+- Cumulative average reward
+- Cumulative pseudo-regret
+- Mean regret across Monte Carlo runs
+- 95% confidence intervals for differences in average reward
+
+Cumulative pseudo-regret is calculated as the sum of the differences between the best expected reward and the expected reward of each selected arm.
+
+## 3. Main Results
+
+The following results are from 1,000 Monte Carlo simulations with 10,000 decisions per run.
+
+| Algorithm | Mean Average Reward | Mean Cumulative Pseudo-Regret |
+|---|---:|---:|
+| Random | 0.499799 | 2000.507 |
+| Epsilon-Greedy | 0.687808 | 119.713 |
+| UCB | 0.689798 | 99.537 |
+| Thompson Sampling | 0.697823 | 19.046 |
+
+In this experiment, Thompson Sampling achieves the highest average reward and the lowest cumulative pseudo-regret.
+
+I also calculated the differences in final average rewards between policies.
+
+| Comparison | Mean Difference | 95% CI |
+|---|---:|---|
+| EG vs Random | 0.188009 | [0.187637, 0.188381] |
+| UCB vs EG | 0.001991 | [0.001688, 0.002293] |
+| TS vs UCB | 0.008025 | [0.007911, 0.008139] |
+
+These comparisons are based on the same bandit environment and fixed algorithm parameters.
+
+### Average Reward Comparison
+
+![Average Reward Comparison](all_policies_comparison.png)
+
+### Cumulative Regret Comparison
+
+![Cumulative Regret Comparison](regret_comparison.png)
+
+## 4. Sensitivity Analysis
+
+I also tested four different bandit environments to see how the differences between arm probabilities affect algorithm performance.
+
+| Environment | True Probabilities | Gap Between Best Two Arms |
+|---|---|---:|
+| Easy | [0.3, 0.5, 0.7] | 0.20 |
+| Medium | [0.4, 0.6, 0.7] | 0.10 |
+| Hard | [0.60, 0.65, 0.70] | 0.05 |
+| Very Hard | [0.68, 0.69, 0.70] | 0.01 |
+
+For these initial tests, I used 100 Monte Carlo runs with 3,000 decisions per run.
+
+### Mean Cumulative Pseudo-Regret
+
+| Environment | Random | EG | UCB | TS |
+|---|---:|---:|---:|---:|
+| Easy | 599.528 | 46.330 | 68.920 | 18.732 |
+| Medium | 399.659 | 50.599 | 79.932 | 21.336 |
+| Hard | 149.882 | 47.592 | 81.512 | 30.270 |
+| Very Hard | 29.976 | 23.443 | 26.478 | 23.007 |
+
+### Optimal Arm Selection Rate
+
+| Environment | Random | EG | UCB | TS |
+|---|---:|---:|---:|---:|
+| Easy | 33.38% | 94.36% | 90.85% | 97.41% |
+| Medium | 33.38% | 87.21% | 80.61% | 94.68% |
+| Hard | 33.38% | 73.70% | 60.13% | 84.11% |
+| Very Hard | 33.38% | 44.87% | 39.78% | 45.78% |
+
+### Observations
+
+Thompson Sampling has the lowest mean regret in all four environments tested.
+
+In the 3,000-decision experiments, Epsilon-Greedy performs better than the current UCB implementation. However, in the main 10,000-decision experiment, UCB has lower mean regret than Epsilon-Greedy.
+
+This suggests that the comparison may depend on the time horizon and exploration parameters.
+
+As the reward probabilities become closer, all three learning algorithms select the optimal arm less frequently. In the Very Hard environment, the differences in regret are relatively small because selecting a suboptimal arm causes only a small expected reward loss.
+
+The sensitivity results are preliminary, and more simulations would be useful for comparing small performance differences.
+
+## 5. Code Structure
+
+The main simulation is implemented in `bandit.py`.
+
+Main functions:
+
+- `pull_arm()`: Generates a Bernoulli reward.
+- `policy_random()`: Random arm selection.
+- `policy_EG()`: Epsilon-Greedy selection.
+- `policy_UCB()`: Upper Confidence Bound selection.
+- `policy_TS()`: Thompson Sampling selection.
+- `run_bandit()`: Runs one bandit simulation using a selected policy.
+- `run_monte_carlo()`: Runs multiple simulations and stores the reward and action histories.
+
+The same simulation framework is used for all four policies.
+
+## 6. How to Run
+
+The project uses Python, NumPy, and Matplotlib.
+
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
 ```
 
-The simulation runs for 10,000 decisions with:
+Run the simulation:
 
-```python
-epsilon = 0.1
-seed = 17
+```bash
+python bandit.py
 ```
 
-Each arm returns either 0 or 1. An arm with a higher probability is more likely to return 1.
+The script generates:
 
-## Results
+- `all_policies_comparison.png` — cumulative average reward comparison
+- `regret_comparison.png` — cumulative pseudo-regret comparison
+- `sensitivity_results.csv` — sensitivity analysis results
+- `bandit_mc_results.npz` — Monte Carlo reward and action histories, saved locally
 
-| Method         | Average Reward | Optimal Arm Selection Rate |
-| -------------- | -------------: | -------------------------: |
-| Random         |         0.5057 |                     0.3339 |
-| Epsilon-Greedy |         0.6830 |                     0.9300 |
+The main simulation uses 1,000 runs with 10,000 decisions each. The sensitivity analysis currently uses 100 runs with 3,000 decisions each.
 
-The random method selects all three arms about equally.
+## 7. Next Steps
 
-The epsilon-greedy method learns that the third arm has the highest reward probability and selects it most of the time.
+Some possible next steps are:
 
-![Reward comparison](reward_comparison.png)
+- Compare the algorithms over different time horizons.
+- Test different epsilon values for Epsilon-Greedy.
+- Test different exploration coefficients for UCB.
+- Increase the number of Monte Carlo runs in the sensitivity analysis.
+- Study how quickly each algorithm identifies the optimal arm.
+
+These experiments could help explain the differences between the policies under different exploration settings and bandit environments.
