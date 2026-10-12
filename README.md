@@ -89,8 +89,6 @@ Each experiment uses 100 Monte Carlo runs with 3,000 decisions per run.
 | Hard | [0.60, 0.65, 0.70] | 0.05 |
 | Very Hard | [0.68, 0.69, 0.70] | 0.01 |
 
-For these initial tests, I used 100 Monte Carlo runs with 3,000 decisions per run.
-
 ### Mean Cumulative Pseudo-Regret
 
 | Environment | Random | EG | UCB | TS |
@@ -117,7 +115,6 @@ In the 3,000-decision experiments, Epsilon-Greedy performs better than the curre
 
 This suggests that the comparison may depend on the time horizon and exploration parameters.
 
-As the reward probabilities become closer, all three learning algorithms select the optimal arm less frequently. In the Very Hard environment, the differences in regret are relatively small because selecting a suboptimal arm causes only a small expected reward loss.
-
-The sensitivity results are preliminary, and more simulations would be useful for comparing small performance differences.
+As the reward probabilities become closer, all three learning algorithms select the optimal arm less frequently. In the Very Hard environment, the differences in regret are relatively small because selecting a suboptimal arm causes only a small expected reward loss. 
+These results are based on 100 Monte Carlo runs, so more simulations may be needed to compare algorithms with similar performance.
 
