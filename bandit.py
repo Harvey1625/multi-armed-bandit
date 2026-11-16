@@ -76,7 +76,8 @@ def policy_TS(times, reward, esti_probs, rng, i, epsilon):
 
 ## method that runs a bandit simulation using a given policy
 
-def run_bandit(num_dec, true_probs, policy, rng, epsilon=0.1, reward_rng=None):
+def run_bandit(num_dec, true_probs, policy, rng, epsilon=0.1,
+               reward_rng=None, changing_probs=None, window=None):
 
     num_arms = len(true_probs)
 
@@ -92,9 +93,42 @@ def run_bandit(num_dec, true_probs, policy, rng, epsilon=0.1, reward_rng=None):
 
     for i in range(num_dec):
 
-        action = policy(times, reward, esti_probs, rng, i, epsilon)
 
-        current_reward = pull_arm(true_probs[action], reward_rng)
+        if window is not None and i > window:
+            old_i = i - window - 1
+            old_action = action_history[old_i]
+
+            reward[old_action] -= reward_history[old_i]
+            times[old_action] -= 1
+
+            if times[old_action] > 0:
+                esti_probs[old_action] = (
+                    reward[old_action] / times[old_action]
+                )
+            else:
+                esti_probs[old_action] = 0
+
+
+        if window is None:
+            action = policy(times, reward, esti_probs, rng, i, epsilon)
+
+        else:
+            policy_i = min(i, window)
+
+            if policy is policy_UCB and np.any(times == 0):
+                action = np.flatnonzero(times == 0)[0]
+            else:
+                action = policy(
+                    times, reward, esti_probs, rng, policy_i, epsilon
+                )
+
+
+        if changing_probs is None:
+            current_prob = true_probs[action]
+        else:
+            current_prob = changing_probs[i, action]
+
+        current_reward = pull_arm(current_prob, reward_rng)
 
         reward[action] += current_reward
         times[action] += 1
@@ -104,12 +138,21 @@ def run_bandit(num_dec, true_probs, policy, rng, epsilon=0.1, reward_rng=None):
         reward_history[i] = current_reward
         action_history[i] = action
 
-    return reward, times, reward_history, action_history
+
+    total_times = np.bincount(action_history, minlength=num_arms)
+    total_reward = np.bincount(
+        action_history,
+        weights=reward_history,
+        minlength=num_arms
+    ).astype(int)
+
+    return total_reward, total_times, reward_history, action_history
 
 
 ## method that runs multiple independent bandit simulations
 
-def run_monte_carlo(M, num_dec, true_probs, policy, epsilon=0.1, seed=17):
+def run_monte_carlo(M, num_dec, true_probs, policy, epsilon=0.1,
+                    seed=17, changing_probs=None, window=None):
 
     all_reward_history = np.zeros((M, num_dec))
     all_action_history = np.zeros((M, num_dec), dtype=int)
@@ -125,11 +168,21 @@ def run_monte_carlo(M, num_dec, true_probs, policy, epsilon=0.1, seed=17):
         reward_rng = np.random.default_rng(reward_seed)
 
         reward, times, reward_history, action_history = run_bandit(
-            num_dec, true_probs, policy, policy_rng, epsilon, reward_rng=reward_rng
+            num_dec,
+            true_probs,
+            policy,
+            policy_rng,
+            epsilon,
+            reward_rng=reward_rng,
+            changing_probs=changing_probs,
+            window=window
         )
 
         all_reward_history[m] = reward_history
         all_action_history[m] = action_history
+
+        if (m + 1) % 100 == 0:
+            print(f"Completed {m + 1}/{M} runs", flush=True)
 
     return all_reward_history, all_action_history
 
@@ -363,3 +416,326 @@ for scenario_name, probs in scenarios.items():
         print(policy_name, "Mean Reward:", round(mean_reward, 5), "Mean Regret:", round(mean_regret, 3), "Optimal Arm Rate:", round(optimal_arm_rate, 4))
 
 
+# non-stationary environment
+
+change_point = num_dec // 2
+
+changing_probs = np.zeros((num_dec, len(true_probs)))
+
+changing_probs[:change_point] = true_probs
+changing_probs[change_point:] = [0.7, 0.5, 0.3]
+
+M_change = 1000
+
+
+# UCB
+
+rewards_change_UCB, actions_change_UCB = run_monte_carlo(
+    M_change,
+    num_dec,
+    true_probs,
+    policy_UCB,
+    changing_probs=changing_probs
+)
+
+
+# Thompson Sampling
+
+rewards_change_TS, actions_change_TS = run_monte_carlo(
+    M_change,
+    num_dec,
+    true_probs,
+    policy_TS,
+    changing_probs=changing_probs
+)
+
+
+# dynamic pseudo-regret
+
+step_index = np.arange(num_dec)
+
+best_probs = np.max(changing_probs, axis=1)
+
+selected_probs_UCB = changing_probs[step_index, actions_change_UCB]
+selected_probs_TS = changing_probs[step_index, actions_change_TS]
+
+regret_change_UCB = np.cumsum(
+    best_probs - selected_probs_UCB,
+    axis=1
+)
+
+regret_change_TS = np.cumsum(
+    best_probs - selected_probs_TS,
+    axis=1
+)
+
+mean_regret_change_UCB = np.mean(regret_change_UCB, axis=0)
+mean_regret_change_TS = np.mean(regret_change_TS, axis=0)
+
+print("Non-stationary UCB regret:", mean_regret_change_UCB[-1])
+print("Non-stationary TS regret:", mean_regret_change_TS[-1])
+
+# sliding-window experiments and saved results
+
+from pathlib import Path
+import csv
+
+results_dir = Path(__file__).resolve().parent / "bandit_results"
+results_dir.mkdir(exist_ok=True)
+
+
+# Save the full-history baseline results
+
+np.savez_compressed(
+    results_dir / "baseline_results.npz",
+    changing_probs=changing_probs,
+    rewards_UCB=rewards_change_UCB,
+    actions_UCB=actions_change_UCB,
+    rewards_TS=rewards_change_TS,
+    actions_TS=actions_change_TS
+)
+
+
+# Summarize one method
+
+def summarize_method(actions):
+    selected_probs = changing_probs[step_index, actions]
+
+    cumulative_regret = np.cumsum(
+        best_probs - selected_probs,
+        axis=1
+    )
+
+    mean_regret = np.mean(cumulative_regret, axis=0)
+
+    ci_regret = (
+        1.96
+        * np.std(cumulative_regret, axis=0, ddof=1)
+        / np.sqrt(actions.shape[0])
+    )
+
+    post_regret = (
+        cumulative_regret[:, -1]
+        - cumulative_regret[:, change_point - 1]
+    )
+
+    # After the switch, arm 0 is the best arm
+    post_actions = actions[:, change_point:]
+
+    # Average within each 100-step block, then across runs
+    bin_size = 100
+    bin_starts = np.arange(0, post_actions.shape[1], bin_size)
+
+    rates_by_run = np.column_stack([
+        np.mean(post_actions[:, start:start + bin_size] == 0, axis=1)
+        for start in bin_starts
+    ])
+
+    mean_rate = np.mean(rates_by_run, axis=0)
+
+    ci_rate = (
+        1.96
+        * np.std(rates_by_run, axis=0, ddof=1)
+        / np.sqrt(actions.shape[0])
+    )
+
+    return {
+        "mean_regret": mean_regret,
+        "ci_regret": ci_regret,
+        "post_regret": np.mean(post_regret),
+        "post_optimal_rate": np.mean(post_actions == 0),
+        "bin_steps": bin_starts + 1,
+        "mean_rate": mean_rate,
+        "ci_rate": ci_rate
+    }
+
+
+comparison = {
+    "UCB": summarize_method(actions_change_UCB),
+    "TS": summarize_method(actions_change_TS)
+}
+
+
+# Run the sliding-window versions
+
+window_lengths = [100, 500, 1000]
+
+window_policies = {
+    "UCB": policy_UCB,
+    "TS": policy_TS
+}
+
+for window in window_lengths:
+
+    for policy_name, policy in window_policies.items():
+
+        label = f"{policy_name} W={window}"
+
+        cache_file = results_dir / (
+            f"{policy_name}_W{window}_M{M_change}_T{num_dec}_seed17.npz"
+        )
+
+        if cache_file.exists():
+
+            print("Loading:", label, flush=True)
+
+            with np.load(cache_file) as saved:
+                if not np.array_equal(
+                    saved["changing_probs"], changing_probs
+                ):
+                    raise ValueError(
+                        "Environment changed: remove the old cache file."
+                    )
+
+                actions_window = saved["actions"]
+
+        else:
+
+            print("Running:", label, flush=True)
+
+            rewards_window, actions_window = run_monte_carlo(
+                M_change,
+                num_dec,
+                true_probs,
+                policy,
+                seed=17,
+                changing_probs=changing_probs,
+                window=window
+            )
+
+            np.savez_compressed(
+                cache_file,
+                changing_probs=changing_probs,
+                rewards=rewards_window,
+                actions=actions_window
+            )
+
+            del rewards_window
+
+        comparison[label] = summarize_method(actions_window)
+
+        result = comparison[label]
+
+        print(
+            label,
+            "Mean regret:",
+            round(result["mean_regret"][-1], 4),
+            "95% CI half-width:",
+            round(result["ci_regret"][-1], 4),
+            flush=True
+        )
+
+        del actions_window
+
+
+# Save the summary table
+
+with open(
+    results_dir / "summary.csv",
+    "w",
+    newline="",
+    encoding="utf-8"
+) as file:
+
+    writer = csv.writer(file)
+
+    writer.writerow([
+        "method",
+        "mean_total_regret",
+        "ci95_low",
+        "ci95_high",
+        "mean_post_switch_regret",
+        "post_switch_optimal_arm_rate"
+    ])
+
+    for label, result in comparison.items():
+
+        mean = result["mean_regret"][-1]
+        half_width = result["ci_regret"][-1]
+
+        writer.writerow([
+            label,
+            mean,
+            mean - half_width,
+            mean + half_width,
+            result["post_regret"],
+            result["post_optimal_rate"]
+        ])
+
+
+# Plot cumulative dynamic pseudo-regret
+
+plt.figure(figsize=(10, 6))
+
+for label, result in comparison.items():
+
+    line, = plt.plot(
+        dec_steps,
+        result["mean_regret"],
+        label=label
+    )
+
+    plt.fill_between(
+        dec_steps,
+        result["mean_regret"] - result["ci_regret"],
+        result["mean_regret"] + result["ci_regret"],
+        color=line.get_color(),
+        alpha=0.1
+    )
+
+plt.axvline(
+    change_point + 0.5,
+    color="black",
+    linestyle="--",
+    label="Environment switch"
+)
+
+plt.xlabel("Decision")
+plt.ylabel("Mean Cumulative Dynamic Pseudo-Regret")
+plt.title("Full History vs Sliding Windows")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+
+plt.savefig(
+    results_dir / "nonstationary_regret.png",
+    dpi=300
+)
+plt.close()
+
+
+# Plot adaptation after the switch
+
+plt.figure(figsize=(10, 6))
+
+for label, result in comparison.items():
+
+    line, = plt.plot(
+        result["bin_steps"],
+        result["mean_rate"],
+        label=label
+    )
+
+    plt.fill_between(
+        result["bin_steps"],
+        np.maximum(0, result["mean_rate"] - result["ci_rate"]),
+        np.minimum(1, result["mean_rate"] + result["ci_rate"]),
+        color=line.get_color(),
+        alpha=0.1
+    )
+
+plt.xlabel("Decision After Switch (100-Step Bin Start)")
+plt.ylabel("New Best Arm Selection Rate")
+plt.title("Adaptation After the Environment Switch")
+plt.ylim(0, 1.02)
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+
+plt.savefig(
+    results_dir / "adaptation_after_switch.png",
+    dpi=300
+)
+plt.close()
+
+print("All experiments finished. Results saved to:", results_dir)
